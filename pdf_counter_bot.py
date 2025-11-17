@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
 from typing import AsyncIterable
 
 import fastapi_poe as fp
 import requests
-from modal import Image, Stub, asgi_app
+from modal import App, Image, asgi_app
 from PyPDF2 import PdfReader
+
+# TODO: set your bot access key and bot name for full functionality
+# see https://creator.poe.com/docs/quick-start#configuring-the-access-credentials
+bot_access_key = os.getenv("POE_ACCESS_KEY")
+bot_name = ""
 
 
 class FileDownloadError(Exception):
@@ -26,40 +32,43 @@ class PDFSizeBot(fp.PoeBot):
     async def get_response(
         self, request: fp.QueryRequest
     ) -> AsyncIterable[fp.PartialResponse]:
+        yield fp.PartialResponse(
+            text="Iterating over the pdfs uploaded in this conversation ..."
+        )
         for message in reversed(request.query):
             for attachment in message.attachments:
                 if attachment.content_type == "application/pdf":
                     try:
                         num_pages = _fetch_pdf_and_count_num_pages(attachment.url)
                         yield fp.PartialResponse(
-                            text=f"{attachment.name} has {num_pages} pages"
+                            text=f"{attachment.name} has {num_pages} pages.\n"
                         )
                     except FileDownloadError:
                         yield fp.PartialResponse(
                             text="Failed to retrieve the document."
                         )
-                    return
 
     async def get_settings(self, setting: fp.SettingsRequest) -> fp.SettingsResponse:
         return fp.SettingsResponse(allow_attachments=True)
 
 
-REQUIREMENTS = ["fastapi-poe==0.0.36", "PyPDF2==3.0.1", "requests==2.31.0"]
-image = Image.debian_slim().pip_install(*REQUIREMENTS)
-stub = Stub("pdf-counter-poe")
+REQUIREMENTS = ["fastapi-poe", "PyPDF2==3.0.1", "requests==2.31.0"]
+image = (
+    Image.debian_slim()
+    .pip_install(*REQUIREMENTS)
+    .env({"POE_ACCESS_KEY": bot_access_key})
+)
+app = App("pdf-counter-poe")
 
 
-@stub.function(image=image)
+@app.function(image=image)
 @asgi_app()
 def fastapi_app():
     bot = PDFSizeBot()
-    # Optionally, provide your Poe access key here:
-    # 1. You can go to https://poe.com/create_bot?server=1 to generate an access key.
-    # 2. We strongly recommend using a key for a production bot to prevent abuse,
-    # but the starter examples disable the key check for convenience.
-    # 3. You can also store your access key on modal.com and retrieve it in this function
-    # by following the instructions at: https://modal.com/docs/guide/secrets
-    # POE_ACCESS_KEY = ""
-    # app = make_app(bot, access_key=POE_ACCESS_KEY)
-    app = fp.make_app(bot, allow_without_key=True)
+    app = fp.make_app(
+        bot,
+        access_key=bot_access_key,
+        bot_name=bot_name,
+        allow_without_key=not (bot_access_key and bot_name),
+    )
     return app
