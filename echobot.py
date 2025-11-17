@@ -8,10 +8,16 @@ This is the simplest possible bot and a great place to start if you want to buil
 
 from __future__ import annotations
 
+import os
 from typing import AsyncIterable
 
 import fastapi_poe as fp
-from modal import Image, Stub, asgi_app
+from modal import App, Image, asgi_app
+
+# TODO: set your bot access key and bot name for full functionality
+# see https://creator.poe.com/docs/quick-start#configuring-the-access-credentials
+bot_access_key = os.getenv("POE_ACCESS_KEY")
+bot_name = ""
 
 
 class EchoBot(fp.PoeBot):
@@ -22,22 +28,23 @@ class EchoBot(fp.PoeBot):
         yield fp.PartialResponse(text=last_message)
 
 
-REQUIREMENTS = ["fastapi-poe==0.0.36"]
-image = Image.debian_slim().pip_install(*REQUIREMENTS)
-stub = Stub("echobot-poe")
+REQUIREMENTS = ["fastapi-poe"]
+image = (
+    Image.debian_slim()
+    .pip_install(*REQUIREMENTS)
+    .env({"POE_ACCESS_KEY": bot_access_key})
+)
+app = App("echobot-poe")
 
 
-@stub.function(image=image)
+@app.function(image=image)
 @asgi_app()
 def fastapi_app():
     bot = EchoBot()
-    # Optionally, provide your Poe access key here:
-    # 1. You can go to https://poe.com/create_bot?server=1 to generate an access key.
-    # 2. We strongly recommend using a key for a production bot to prevent abuse,
-    # but the starter examples disable the key check for convenience.
-    # 3. You can also store your access key on modal.com and retrieve it in this function
-    # by following the instructions at: https://modal.com/docs/guide/secrets
-    # POE_ACCESS_KEY = ""
-    # app = make_app(bot, access_key=POE_ACCESS_KEY)
-    app = fp.make_app(bot, allow_without_key=True)
+    app = fp.make_app(
+        bot,
+        access_key=bot_access_key,
+        bot_name=bot_name,
+        allow_without_key=not (bot_access_key and bot_name),
+    )
     return app

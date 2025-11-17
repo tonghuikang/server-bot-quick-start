@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import os
 from typing import AsyncIterable
 
 import fastapi_poe as fp
-from modal import Image, Mount, Stub, asgi_app
+from modal import App, Image, Mount, asgi_app
+
+# TODO: set your bot access key and bot name for full functionality
+# see https://creator.poe.com/docs/quick-start#configuring-the-access-credentials
+bot_access_key = os.getenv("POE_ACCESS_KEY")
+bot_name = ""
 
 
 class VideoBot(fp.PoeBot):
@@ -18,20 +24,29 @@ class VideoBot(fp.PoeBot):
         yield fp.PartialResponse(text="Attached a video.")
 
 
-REQUIREMENTS = ["fastapi-poe==0.0.36"]
-image = Image.debian_slim().pip_install(*REQUIREMENTS)
-stub = Stub("video-bot")
+REQUIREMENTS = ["fastapi-poe"]
+image = (
+    Image.debian_slim()
+    .pip_install(*REQUIREMENTS)
+    .env({"POE_ACCESS_KEY": bot_access_key})
+)
+app = App(
+    name="video-bot",
+    image=image,
+    mounts=[Mount.from_local_dir("./assets", remote_path="/root/assets")],
+)
 
 
-def get_app():
-    access_key = "<put your access key here>"
-    bot = VideoBot(access_key=access_key)
-    return fp.make_app(bot)
-
-
-@stub.function(
+@app.function(
     image=image, mounts=[Mount.from_local_dir("./assets", remote_path="/root/assets")]
 )
 @asgi_app()
 def fastapi_app():
-    return get_app()
+    bot = VideoBot()
+    app = fp.make_app(
+        bot,
+        access_key=bot_access_key,
+        bot_name=bot_name,
+        allow_without_key=not (bot_access_key and bot_name),
+    )
+    return app

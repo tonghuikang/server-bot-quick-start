@@ -1,13 +1,12 @@
 """
 
-Sample bot that shows how to access the HTTP request.
+Sample bot that shows the query sent to the bot.
 
 """
 
 from __future__ import annotations
 
 import os
-import re
 from typing import AsyncIterable
 
 import fastapi_poe as fp
@@ -22,18 +21,18 @@ bot_access_key = os.getenv("POE_ACCESS_KEY")
 bot_name = ""
 
 
-class HttpRequestBot(fp.PoeBot):
-    async def get_response_with_context(
-        self, request: fp.QueryRequest, context: fp.RequestContext
+class LogBot(fp.PoeBot):
+    async def get_response(
+        self, request: fp.QueryRequest
     ) -> AsyncIterable[fp.PartialResponse]:
+        request.access_key = "redacted"
+        request.api_key = "redacted"
+        yield fp.PartialResponse(text="```python\n" + pformat(request) + "\n```")
 
-        context_string = pformat(context)
-        context_string = re.sub(r"Bearer \w+", "Bearer [REDACTED]", context_string)
-        context_string = re.sub(
-            r"b'host',\s*b'([^']*)'", r"b'host', b'[REDACTED_HOST]'", context_string
+    async def get_settings(self, setting: fp.SettingsRequest) -> fp.SettingsResponse:
+        return fp.SettingsResponse(
+            allow_attachments=True, enable_image_comprehension=True
         )
-
-        yield fp.PartialResponse(text="```python\n" + context_string + "\n```")
 
 
 REQUIREMENTS = ["fastapi-poe", "devtools==0.12.2"]
@@ -42,13 +41,13 @@ image = (
     .pip_install(*REQUIREMENTS)
     .env({"POE_ACCESS_KEY": bot_access_key})
 )
-app = App("http-request")
+app = App("log-bot-poe")
 
 
 @app.function(image=image)
 @asgi_app()
 def fastapi_app():
-    bot = HttpRequestBot()
+    bot = LogBot()
     app = fp.make_app(
         bot,
         access_key=bot_access_key,

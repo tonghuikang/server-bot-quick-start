@@ -7,12 +7,18 @@ Sample bot that returns interleaved results from GPT-3.5-Turbo and Claude-instan
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from collections import defaultdict
 from typing import AsyncIterable, AsyncIterator
 
 import fastapi_poe as fp
-from modal import Image, Stub, asgi_app
+from modal import App, Image, asgi_app
+
+# TODO: set your bot access key and bot name for this bot to work
+# see https://creator.poe.com/docs/quick-start#configuring-the-access-credentials
+bot_access_key = os.getenv("POE_ACCESS_KEY")
+bot_name = ""
 
 
 async def combine_streams(
@@ -113,33 +119,34 @@ class GPT35TurbovsClaudeBot(fp.PoeBot):
     ) -> AsyncIterable[fp.PartialResponse]:
         streams = [
             stream_request_wrapper(request, bot)
-            for bot in ("GPT-3.5-Turbo", "Claude-instant")
+            for bot in ("GPT-3.5-Turbo", "Claude-3.5-Haiku")
         ]
         async for msg in combine_streams(*streams):
             yield msg
 
     async def get_settings(self, setting: fp.SettingsRequest) -> fp.SettingsResponse:
         return fp.SettingsResponse(
-            server_bot_dependencies={"GPT-3.5-Turbo": 1, "Claude-instant": 1}
+            server_bot_dependencies={"GPT-3.5-Turbo": 1, "Claude-3.5-Haiku": 1}
         )
 
 
-REQUIREMENTS = ["fastapi-poe==0.0.36"]
-image = Image.debian_slim().pip_install(*REQUIREMENTS)
-stub = Stub("turbo-vs-claude-poe")
+REQUIREMENTS = ["fastapi-poe"]
+image = (
+    Image.debian_slim()
+    .pip_install(*REQUIREMENTS)
+    .env({"POE_ACCESS_KEY": bot_access_key})
+)
+app = App("turbo-vs-claude-poe")
 
 
-@stub.function(image=image)
+@app.function(image=image)
 @asgi_app()
 def fastapi_app():
     bot = GPT35TurbovsClaudeBot()
-    # Optionally, provide your Poe access key here:
-    # 1. You can go to https://poe.com/create_bot?server=1 to generate an access key.
-    # 2. We strongly recommend using a key for a production bot to prevent abuse,
-    # but the starter examples disable the key check for convenience.
-    # 3. You can also store your access key on modal.com and retrieve it in this function
-    # by following the instructions at: https://modal.com/docs/guide/secrets
-    # POE_ACCESS_KEY = ""
-    # app = make_app(bot, access_key=POE_ACCESS_KEY)
-    app = fp.make_app(bot, allow_without_key=True)
+    app = fp.make_app(
+        bot,
+        access_key=bot_access_key,
+        bot_name=bot_name,
+        allow_without_key=not (bot_access_key and bot_name),
+    )
     return app
